@@ -1,0 +1,17 @@
+{
+  "name": "fin-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter frontend dev\" \"pnpm --filter backend dev\"",
+    "build": "pnpm --filter frontend build && pnpm --filter backend build",
+    "lint": "pnpm --filter frontend lint && pnpm --filter backend lint"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
