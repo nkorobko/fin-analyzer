@@ -114,6 +114,19 @@ class ImportService:
                 )
                 
                 self.db.add(transaction)
+                self.db.flush()  # Get transaction ID
+                
+                # Auto-categorize with rules
+                from app.services.categorization_service import CategorizationService
+                cat_service = CategorizationService(self.db)
+                category_id, method, confidence = cat_service.categorize_transaction(transaction)
+                
+                if category_id:
+                    transaction.category_id = category_id
+                    transaction.is_categorized = True
+                    transaction.categorization_method = method
+                    transaction.categorization_confidence = confidence
+                
                 stats['imported'] += 1
             
             except Exception as e:
