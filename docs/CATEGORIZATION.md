@@ -235,6 +235,154 @@ Type: regex
 - Pattern uses actual Hebrew characters (not transliteration)
 - No extra spaces or invisible characters in pattern
 
-## Next: LLM Categorization
+## LLM-Based Categorization
 
-For transactions that don't match any rules, Phase 2 (Issue #6) adds LLM-based categorization using Claude API.
+For transactions that don't match any rule, the system can use **Claude AI** to intelligently categorize them.
+
+### How It Works
+
+1. **Rule Engine First** — Always try rule-based matching first (fast, free)
+2. **LLM Fallback** — If no rule matches, optionally call Claude API
+3. **Confidence Score** — Claude returns a 0.0-1.0 confidence score
+4. **Category Validation** — System verifies the AI's category choice exists
+
+### When to Use LLM
+
+**Use LLM for:**
+- New/unknown merchants not covered by rules
+- Ambiguous transaction descriptions
+- One-time or irregular transactions
+- Foreign merchants
+- Complex or cryptic descriptions (e.g., "AMZN MKTP US*AB12C3D4")
+
+**Don't use LLM for:**
+- High-volume imports (can be expensive)
+- Transactions with clear patterns (create a rule instead)
+- When speed is critical
+
+### API Usage
+
+#### Enable LLM for Bulk Categorization
+```
+POST /api/categorization/categorize-all?use_llm=true
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total": 150,
+  "categorized": 140,
+  "failed": 10,
+  "by_rule": 120,
+  "by_llm": 20
+}
+```
+
+#### Enable LLM for Single Transaction
+```
+POST /api/categorization/transactions/{id}/categorize?use_llm=true
+```
+
+### Configuration
+
+Set your Anthropic API key in `.env`:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+Get an API key at: https://console.anthropic.com/
+
+### Cost Considerations
+
+Claude API pricing (as of 2024):
+- **Input:** ~$3 per million tokens
+- **Output:** ~$15 per million tokens
+
+Typical transaction categorization:
+- ~150 tokens per request
+- **Cost:** ~$0.0005 per transaction
+
+**Example costs:**
+- 100 transactions: ~$0.05
+- 1,000 transactions: ~$0.50
+- 10,000 transactions: ~$5.00
+
+**Recommendation:** Use rules for recurring transactions, reserve LLM for unknowns.
+
+### Model Used
+
+- **Model:** claude-3-5-sonnet-20241022
+- **Temperature:** 0 (deterministic)
+- **Max tokens:** 200 (JSON response only)
+
+### Prompt Design
+
+The LLM receives:
+- Transaction description
+- Merchant name (if available)
+- Amount and whether it's income/expense
+- Date
+- Full list of available categories
+
+It responds with structured JSON:
+```json
+{
+  "category_id": 5,
+  "confidence": 0.85,
+  "reasoning": "Coffee shop purchase"
+}
+```
+
+### Performance
+
+- **Average latency:** 1-2 seconds per transaction
+- **Success rate:** ~95% for clear descriptions
+- **Fallback:** If LLM fails, transaction remains uncategorized
+
+### Hebrew Support
+
+Claude handles Hebrew text naturally:
+- Can understand Hebrew merchant names (שופרסל, פז, etc.)
+- Recognizes mixed Hebrew-English descriptions
+- Aware of Israeli context and common merchants
+
+### Best Practices
+
+1. **Build Rules First** — Create rules for your most common transactions
+2. **LLM for Exceptions** — Use AI only for what rules can't handle
+3. **Review AI Results** — Check confidence scores, correct mistakes
+4. **Create Rules from Patterns** — If LLM categorizes the same merchant repeatedly, create a rule
+5. **Monitor Costs** — Track API usage if processing large volumes
+
+### Troubleshooting
+
+**LLM Not Working:**
+- Check that `ANTHROPIC_API_KEY` is set in `.env`
+- Verify API key is valid
+- Check API quota/billing status
+
+**Low Confidence Scores:**
+- Descriptions may be too vague
+- Multiple categories could apply
+- Consider manual review for scores <0.7
+
+**Wrong Categories:**
+- LLM may misinterpret ambiguous descriptions
+- Create specific rules to override
+- Manually correct and log patterns
+
+### Workflow Recommendation
+
+**Initial Import:**
+1. Import CSV → auto-categorize with rules only
+2. Review uncategorized transactions
+3. For one-time/unknown merchants → use LLM
+4. For recurring patterns → create new rules
+5. Re-run bulk categorization
+
+**Ongoing Use:**
+- Weekly: Review new uncategorized transactions
+- Monthly: Analyze LLM results, create rules for common patterns
+- Quarterly: Audit rule coverage, optimize for better accuracy

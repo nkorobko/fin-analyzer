@@ -113,14 +113,22 @@ async def delete_rule(rule_id: int, db: Session = Depends(get_db)):
     return {"success": True, "message": "Rule deleted"}
 
 @router.post("/categorize-all")
-async def categorize_all(db: Session = Depends(get_db)):
+async def categorize_all(
+    use_llm: bool = False,
+    db: Session = Depends(get_db)
+):
     """
     Run categorization on all uncategorized transactions
     
-    Uses rule-based categorization only
+    Parameters:
+    - use_llm: If true, use LLM for transactions that don't match any rules
+    
+    Process:
+    1. Try rule-based categorization first (fast, free)
+    2. If no rule matches and use_llm=true, use Claude API (slower, costs money)
     """
     service = CategorizationService(db)
-    stats = service.categorize_all_uncategorized(use_llm_fallback=False)
+    stats = service.categorize_all_uncategorized(use_llm_fallback=use_llm)
     
     return {
         "success": True,
@@ -130,9 +138,15 @@ async def categorize_all(db: Session = Depends(get_db)):
 @router.post("/transactions/{transaction_id}/categorize")
 async def categorize_transaction(
     transaction_id: int,
+    use_llm: bool = False,
     db: Session = Depends(get_db)
 ):
-    """Categorize a single transaction"""
+    """
+    Categorize a single transaction
+    
+    Parameters:
+    - use_llm: If true, use LLM fallback if no rule matches
+    """
     from app.models import Transaction
     
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
@@ -141,7 +155,10 @@ async def categorize_transaction(
         raise HTTPException(status_code=404, detail="Transaction not found")
     
     service = CategorizationService(db)
-    category_id, method, confidence = service.categorize_transaction(transaction)
+    category_id, method, confidence = service.categorize_transaction(
+        transaction,
+        use_llm_fallback=use_llm
+    )
     
     if category_id:
         transaction.category_id = category_id
@@ -161,5 +178,5 @@ async def categorize_transaction(
     else:
         return {
             "success": False,
-            "message": "Could not categorize transaction"
+            "message": "Could not categorize transaction (no matching rules and LLM disabled or failed)"
         }

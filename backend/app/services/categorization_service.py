@@ -2,8 +2,11 @@
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
 import re
+import anthropic
+import json
 
 from app.models import Transaction, Category, CategorizationRule
+from app.config import settings
 
 class CategorizationService:
     """Service for automatically categorizing transactions"""
@@ -32,10 +35,11 @@ class CategorizationService:
         if category_id:
             return category_id, 'rule', 1.0
         
-        # TODO: LLM fallback (Phase 2, Issue #6)
+        # LLM fallback for unmatched transactions
         if use_llm_fallback:
-            # Will be implemented in next issue
-            pass
+            category_id, confidence = self._categorize_by_llm(transaction)
+            if category_id:
+                return category_id, 'llm', confidence
         
         return None, 'none', 0.0
     
@@ -141,6 +145,92 @@ class CategorizationService:
     def invalidate_cache(self):
         """Invalidate the rules cache (call after adding/updating rules)"""
         self._rules_cache = None
+    
+    def _categorize_by_llm(self, transaction: Transaction) -> Tuple[Optional[int], float]:
+        """
+        Use Claude API to categorize transaction
+        
+        Returns:
+            Tuple of (category_id, confidence)
+        """
+        if not settings.ANTHROPIC_API_KEY:
+            return None, 0.0
+        
+        try:
+            # Get all available categories
+            categories = self.db.query(Category).filter(Category.category_type == 'expense').all()
+            
+            if not categories:
+                return None, 0.0
+            
+            # Build category list for prompt
+            category_list = "\n".join([
+                f"- {cat.name} ({cat.id})"
+                for cat in categories
+            ])
+            
+            # Determine if income or expense
+            amount_type = "income" if transaction.amount > 0 else "expense"
+            
+            # Build prompt
+            prompt = f"""Analyze this financial transaction and categorize it.
+
+Transaction Details:
+- Description: {transaction.description}
+- Merchant: {transaction.merchant or 'N/A'}
+- Amount: {abs(transaction.amount)} ILS ({amount_type})
+- Date: {transaction.date.strftime('%Y-%m-%d')}
+
+Available Categories (ID - Name):
+{category_list}
+
+Instructions:
+1. Choose the MOST appropriate category from the list above
+2. Consider that this is an Israeli transaction (may contain Hebrew text)
+3. Common Israeli merchants: שופרסל (groceries), פז (gas), ארומה (coffee), etc.
+4. Respond ONLY with valid JSON in this exact format:
+{{"category_id": <number>, "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}}
+
+Your response:"""
+
+            # Call Claude API
+            client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=200,
+                temperature=0,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            
+            # Parse response
+            response_text = message.content[0].text.strip()
+            
+            # Extract JSON (Claude sometimes wraps it in markdown)
+            if '```json' in response_text:
+                response_text = response_text.split('```json')[1].split('```')[0].strip()
+            elif '```' in response_text:
+                response_text = response_text.split('```')[1].split('```')[0].strip()
+            
+            result = json.loads(response_text)
+            
+            category_id = result.get('category_id')
+            confidence = result.get('confidence', 0.5)
+            
+            # Validate category exists
+            if category_id:
+                category = self.db.query(Category).filter(Category.id == category_id).first()
+                if category:
+                    return category_id, confidence
+            
+            return None, 0.0
+        
+        except Exception as e:
+            print(f"LLM categorization error: {e}")
+            return None, 0.0
 
 
 def create_default_rules(db: Session):
