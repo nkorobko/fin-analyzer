@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import TransactionsPage from './pages/TransactionsPage'
+import CategoriesPage from './pages/CategoriesPage'
 
 function Navigation() {
   const location = useLocation()
@@ -23,6 +24,7 @@ function Navigation() {
           <div className="flex gap-2">
             <Link to="/" className={linkClass('/')}>Dashboard</Link>
             <Link to="/transactions" className={linkClass('/transactions')}>Transactions</Link>
+            <Link to="/categories" className={linkClass('/categories')}>Categories</Link>
             <Link to="/budgets" className={linkClass('/budgets')}>Budgets</Link>
             <Link to="/import" className={linkClass('/import')}>Import</Link>
           </div>
@@ -68,6 +70,7 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/budgets" element={<div className="p-8 text-center">Budgets (Coming Soon)</div>} />
             <Route path="/import" element={<div className="p-8 text-center">Import (Coming Soon)</div>} />
           </Routes>

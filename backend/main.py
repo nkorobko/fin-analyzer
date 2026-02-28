@@ -22,7 +22,8 @@ async def health():
     return {"status": "healthy"}
 
 # Import routes
-from app.routes import import_routes, transaction_routes, categorization_routes
+from app.routes import import_routes, transaction_routes, categorization_routes, category_routes
 app.include_router(import_routes.router, prefix="/api/import", tags=["import"])
 app.include_router(transaction_routes.router, prefix="/api/transactions", tags=["transactions"])
 app.include_router(categorization_routes.router, prefix="/api/categorization", tags=["categorization"])
+app.include_router(category_routes.router, prefix="/api/categories", tags=["categories"])
